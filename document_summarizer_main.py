@@ -4,15 +4,51 @@ import string
 
 import docx2txt
 import requests
+import pypdf
 import streamlit as st
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv("./dotenv")
+
+
+# function to load and read pdf file
+def read_pdf(file_path):
+    text = ""
+    pdf = pypdf.PdfReader(file_path)
+    for page in pdf.pages:
+        text += page.extract_text()
+    return text
+
+
+# function to convert text into audio using openAi
+def text_to_audio(text):
+    # Initialize the OpenAI API
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if api_key is None:
+        raise ValueError("API key for OpenAI is not set.")
+
+    response = requests.post(
+        "https://api.openai.com/v1/audio/speech",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + api_key
+        },
+        json={
+            "model": "gpt-4o-mini-tts",
+            "input": text,
+            "voice": "alloy",
+        }
+    )
+    with open('speech.mp3', 'wb') as file:
+        file.write(response.content)
+    print("Audio file saved as speech.mp3")
 
 
 # using openAi gpt, summarising the text
 def summarize_text(text):
-    prompt = "Summarize the following text. should provide the concise summaries based on the input text.: " + text
+    prompt = "Summarize the following text. should provide the concise summaries based on the input text.Generate " \
+             "Summary should not exceed more than 250 words." \
+             "summary in bulleted points: " + text
 
     # Initialize the OpenAI API
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -26,7 +62,7 @@ def summarize_text(text):
             "Authorization": "Bearer " + api_key
         },
         json={
-            "model": "gpt-4-turbo",
+            "model": "gpt-4o-mini",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 4095,
@@ -63,6 +99,9 @@ def process_uploaded_file(uploaded_file):
     elif uploaded_file.type == "text/plain":
         # Handle .txt file
         content = uploaded_file.read().decode("utf-8")
+    elif uploaded_file.type == "application/pdf":
+        # Handle .pdf file
+        content = read_pdf(uploaded_file)
     return content
 
 
@@ -81,10 +120,10 @@ def clean_text(text):
 
 def main():
     st.title('Document Summarizer App')
-    st.write('Upload a text file or enter text to analyze.')
+    st.write('Upload a file or enter text to analyze.')
 
     # Upload file or input text
-    uploaded_file = st.file_uploader("Choose a file", type=['txt', 'docx'])
+    uploaded_file = st.file_uploader("Choose a file", type=['txt', 'docx', 'pdf'])
     text_input = st.text_area("Or enter text manually")
 
     if uploaded_file is not None:
@@ -111,6 +150,13 @@ def main():
         summary = summarize_text(cleaned_content)
         st.subheader('Summary')
         st.text_area("Summarized Text", value=summary, height=300)
+
+        # converting text to audio
+        text_to_audio(summary)
+
+        st.subheader('Audio Summary')
+        # add play button to read the summary
+        st.audio("speech.mp3", format='audio/mp3')
 
 
 if __name__ == "__main__":
